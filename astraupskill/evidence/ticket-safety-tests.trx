@@ -1,0 +1,46 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TestRun id="e1bcc7ad-9819-4c48-b58e-5c5ca16edc67" name="Owner@DESKTOP-T0PFEUT 2026-09-12 15:37:35" runUser="DESKTOP-T0PFEUT\Owner" xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+  <Times creation="2026-09-12T15:37:35.3684244-07:00" queuing="2026-09-12T15:37:35.3684256-07:00" start="2026-09-12T15:37:11.2074101-07:00" finish="2026-09-12T15:37:35.3981799-07:00" />
+  <TestSettings name="default" id="3f926b96-6375-40d7-bcfb-e2e5967493d9">
+    <Deployment runDeploymentRoot="Owner_DESKTOP-T0PFEUT_2026-09-12_15_37_35" />
+  </TestSettings>
+  <Results>
+    <UnitTestResult executionId="fc1105ef-b1d1-4b00-a6e7-8f5ca90ff32c" testId="d2243382-b36c-6a9c-a877-4e1992c754bf" testName="SupportDesk.Api.Tests.TicketSafetyTests.ReplaceTags_DoesNotPartiallyMutate_WhenEnumerationFails" computerName="DESKTOP-T0PFEUT" duration="00:00:00.2080160" startTime="2026-09-12T15:37:34.5620472-07:00" endTime="2026-09-12T15:37:34.5620482-07:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="fc1105ef-b1d1-4b00-a6e7-8f5ca90ff32c" />
+    <UnitTestResult executionId="e1459e68-9f82-4096-8888-ae87b511b3cf" testId="74bceeef-0f3e-0a69-894b-da06eb152e02" testName="SupportDesk.Api.Tests.TicketSafetyTests.DomainMethods_RejectUndefinedEnums" computerName="DESKTOP-T0PFEUT" duration="00:00:00.7577864" startTime="2026-09-12T15:37:34.0397109-07:00" endTime="2026-09-12T15:37:34.0400232-07:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="e1459e68-9f82-4096-8888-ae87b511b3cf" />
+    <UnitTestResult executionId="18311eb6-32e5-4658-8ddb-a70f223460ba" testId="d035915e-dbbf-da70-d410-a23055b415ec" testName="SupportDesk.Api.Tests.TicketSafetyTests.Search_UsesAuthorizedPopulationAcrossSourcePages_AndHidesInternalMarkers" computerName="DESKTOP-T0PFEUT" duration="00:00:00.3148192" startTime="2026-09-12T15:37:34.3539045-07:00" endTime="2026-09-12T15:37:34.3539052-07:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="18311eb6-32e5-4658-8ddb-a70f223460ba" />
+  </Results>
+  <TestDefinitions>
+    <UnitTest name="SupportDesk.Api.Tests.TicketSafetyTests.Search_UsesAuthorizedPopulationAcrossSourcePages_AndHidesInternalMarkers" storage="c:\users\owner\desktop\astraorganized2\astra-remaining-improvements\stage\1bb35a95be79\support-ticketing-app\backend\supportdesk.api.tests\bin\release\net8.0\supportdesk.api.tests.dll" id="d035915e-dbbf-da70-d410-a23055b415ec">
+      <Execution id="18311eb6-32e5-4658-8ddb-a70f223460ba" />
+      <TestMethod codeBase="C:\Users\Owner\Desktop\AstraOrganized2\astra-remaining-improvements\stage\1bb35a95be79\support-ticketing-app\backend\SupportDesk.Api.Tests\bin\Release\net8.0\SupportDesk.Api.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="SupportDesk.Api.Tests.TicketSafetyTests" name="Search_UsesAuthorizedPopulationAcrossSourcePages_AndHidesInternalMarkers" />
+    </UnitTest>
+    <UnitTest name="SupportDesk.Api.Tests.TicketSafetyTests.ReplaceTags_DoesNotPartiallyMutate_WhenEnumerationFails" storage="c:\users\owner\desktop\astraorganized2\astra-remaining-improvements\stage\1bb35a95be79\support-ticketing-app\backend\supportdesk.api.tests\bin\release\net8.0\supportdesk.api.tests.dll" id="d2243382-b36c-6a9c-a877-4e1992c754bf">
+      <Execution id="fc1105ef-b1d1-4b00-a6e7-8f5ca90ff32c" />
+      <TestMethod codeBase="C:\Users\Owner\Desktop\AstraOrganized2\astra-remaining-improvements\stage\1bb35a95be79\support-ticketing-app\backend\SupportDesk.Api.Tests\bin\Release\net8.0\SupportDesk.Api.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="SupportDesk.Api.Tests.TicketSafetyTests" name="ReplaceTags_DoesNotPartiallyMutate_WhenEnumerationFails" />
+    </UnitTest>
+    <UnitTest name="SupportDesk.Api.Tests.TicketSafetyTests.DomainMethods_RejectUndefinedEnums" storage="c:\users\owner\desktop\astraorganized2\astra-remaining-improvements\stage\1bb35a95be79\support-ticketing-app\backend\supportdesk.api.tests\bin\release\net8.0\supportdesk.api.tests.dll" id="74bceeef-0f3e-0a69-894b-da06eb152e02">
+      <Execution id="e1459e68-9f82-4096-8888-ae87b511b3cf" />
+      <TestMethod codeBase="C:\Users\Owner\Desktop\AstraOrganized2\astra-remaining-improvements\stage\1bb35a95be79\support-ticketing-app\backend\SupportDesk.Api.Tests\bin\Release\net8.0\SupportDesk.Api.Tests.dll" adapterTypeName="executor://xunit/VsTestRunner2/netcoreapp" className="SupportDesk.Api.Tests.TicketSafetyTests" name="DomainMethods_RejectUndefinedEnums" />
+    </UnitTest>
+  </TestDefinitions>
+  <TestEntries>
+    <TestEntry testId="d2243382-b36c-6a9c-a877-4e1992c754bf" executionId="fc1105ef-b1d1-4b00-a6e7-8f5ca90ff32c" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="74bceeef-0f3e-0a69-894b-da06eb152e02" executionId="e1459e68-9f82-4096-8888-ae87b511b3cf" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="d035915e-dbbf-da70-d410-a23055b415ec" executionId="18311eb6-32e5-4658-8ddb-a70f223460ba" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+  </TestEntries>
+  <TestLists>
+    <TestList name="Results Not in a List" id="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestList name="All Loaded Results" id="19431567-8539-422a-85d7-44ee4e166bda" />
+  </TestLists>
+  <ResultSummary outcome="Completed">
+    <Counters total="3" executed="3" passed="3" failed="0" error="0" timeout="0" aborted="0" inconclusive="0" passedButRunAborted="0" notRunnable="0" notExecuted="0" disconnected="0" warning="0" completed="0" inProgress="0" pending="0" />
+    <Output>
+      <StdOut>[xUnit.net 00:00:00.01] xUnit.net VSTest Adapter v2.8.2+699d445a1a (64-bit .NET 10.0.10)&#xD;
+[xUnit.net 00:00:15.68]   Discovering: SupportDesk.Api.Tests&#xD;
+[xUnit.net 00:00:15.93]   Discovered:  SupportDesk.Api.Tests&#xD;
+[xUnit.net 00:00:15.95]   Starting:    SupportDesk.Api.Tests&#xD;
+[xUnit.net 00:00:17.77]   Finished:    SupportDesk.Api.Tests&#xD;
+</StdOut>
+    </Output>
+  </ResultSummary>
+</TestRun>

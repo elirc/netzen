@@ -1,0 +1,120 @@
+using System.Collections.Concurrent;
+using SupportDesk.Api.Application;
+using SupportDesk.Api.Domain;
+
+namespace SupportDesk.Api.Infrastructure;
+
+public sealed class InMemoryTicketStore : ITicketStore
+{
+    private readonly ConcurrentDictionary<Guid, Ticket> _tickets = new();
+    private readonly object _writeLock = new();
+    private long _sequence = 1000;
+
+    public long NextTicketNumber() => Interlocked.Increment(ref _sequence);
+
+    public Task<Ticket> AddAsync(Ticket ticket, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        _tickets[ticket.Id] = ticket.Snapshot();
+        return Task.FromResult(ticket.Snapshot());
+    }
+
+    public Task<Ticket?> GetAsync(Guid id, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult(_tickets.TryGetValue(id, out var ticket) ? ticket.Snapshot() : null);
+    }
+
+    public Task<Ticket> UpdateAsync(Guid id, int expectedVersion, Action<Ticket> mutate, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        lock (_writeLock)
+        {
+            if (!_tickets.TryGetValue(id, out var current))
+            {
+                throw new NotFoundException("Ticket was not found.");
+            }
+
+            if (current.Version != expectedVersion)
+            {
+                throw new ConcurrencyException($"Ticket version is {current.Version}; refresh before applying changes based on version {expectedVersion}.");
+            }
+
+            var workingCopy = current.Snapshot();
+            mutate(workingCopy);
+            _tickets[id] = workingCopy.Snapshot();
+            return Task.FromResult(workingCopy.Snapshot());
+        }
+    }
+
+    public Task<PagedResult<Ticket>> SearchAsync(TicketSearchCriteria criteria, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var now = DateTimeOffset.UtcNow;
+        var query = _tickets.Values.Select(ticket => ticket.Snapshot()).AsEnumerable();
+
+        if (!string.IsNullOrWhiteSpace(criteria.Query))
+        {
+            var term = criteria.Query.Trim();
+            query = query.Where(ticket =>
+                ticket.Number.Contains(term, StringComparison.OrdinalIgnoreCase) ||
+                ticket.Subject.Contains(term, StringComparison.OrdinalIgnoreCase) ||
+                ticket.Description.Contains(term, StringComparison.OrdinalIgnoreCase) ||
+                ticket.CustomerName.Contains(term, StringComparison.OrdinalIgnoreCase) ||
+                ticket.CustomerEmail.Contains(term, StringComparison.OrdinalIgnoreCase) ||
+                ticket.Comments.Any(comment => comment.Visibility == CommentVisibility.Public && comment.Body.Contains(term, StringComparison.OrdinalIgnoreCase)));
+        }
+
+        if (criteria.Status is not null)
+        {
+            query = query.Where(ticket => ticket.Status == criteria.Status);
+        }
+
+        if (criteria.Priority is not null)
+        {
+            query = query.Where(ticket => ticket.Priority == criteria.Priority);
+        }
+
+        if (!string.IsNullOrWhiteSpace(criteria.AssigneeId))
+        {
+            query = query.Where(ticket => string.Equals(ticket.AssigneeId, criteria.AssigneeId, StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (!string.IsNullOrWhiteSpace(criteria.TeamId))
+        {
+            query = query.Where(ticket => string.Equals(ticket.TeamId, criteria.TeamId, StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (!string.IsNullOrWhiteSpace(criteria.Tag))
+        {
+            query = query.Where(ticket => ticket.Tags.Contains(criteria.Tag, StringComparer.OrdinalIgnoreCase));
+        }
+
+        if (criteria.Breached is not null)
+        {
+            query = query.Where(ticket =>
+                criteria.Breached.Value == (ticket.IsFirstResponseBreached(now) || ticket.IsResolutionBreached(now)));
+        }
+
+        var ordered = query.OrderByDescending(ticket => ticket.UpdatedAt).ToList();
+        var page = Math.Max(criteria.Page, 1);
+        var pageSize = Math.Clamp(criteria.PageSize, 1, 100);
+        var items = ordered.Skip((page - 1) * pageSize).Take(pageSize).ToList();
+
+        return Task.FromResult(new PagedResult<Ticket>(items, ordered.Count, page, pageSize));
+    }
+
+    public void LoadSeedTickets(IEnumerable<Ticket> tickets)
+    {
+        foreach (var ticket in tickets)
+        {
+            _tickets[ticket.Id] = ticket.Snapshot();
+            if (long.TryParse(ticket.Number.Replace("T-", string.Empty, StringComparison.OrdinalIgnoreCase), out var parsed))
+            {
+                Interlocked.Exchange(ref _sequence, Math.Max(_sequence, parsed));
+            }
+        }
+    }
+}

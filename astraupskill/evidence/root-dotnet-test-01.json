@@ -1,0 +1,27 @@
+{
+  "project": "_Organized Desktop/01 Net Workspaces/.netzen",
+  "id": "1bb35a95be79",
+  "command": [
+    "C:/Program Files/dotnet/dotnet.exe",
+    "test",
+    "support-ticketing-app/backend/SupportDesk.Api.Tests/SupportDesk.Api.Tests.csproj",
+    "--configuration",
+    "Release",
+    "--no-restore",
+    "--logger",
+    "trx;LogFileName=root-tests.trx",
+    "--disable-build-servers"
+  ],
+  "cwd": "C:\\Users\\Owner\\Desktop\\AstraOrganized2\\astra-remaining-improvements\\stage\\1bb35a95be79",
+  "environmentOverrides": {
+    "DOTNET_ROLL_FORWARD": "Major"
+  },
+  "startedAt": "2026-09-12T22:35:36.227501+00:00",
+  "status": "complete",
+  "log": "root-dotnet-test-01.log",
+  "pid": 24816,
+  "exitCode": 0,
+  "passed": true,
+  "finishedAt": "2026-09-12T22:37:36.755865+00:00",
+  "elapsedSeconds": 120.52
+}

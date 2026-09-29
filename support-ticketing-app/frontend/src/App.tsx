@@ -1,0 +1,454 @@
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { FormEvent } from "react";
+import {
+  addComment,
+  assignTicket,
+  changeTicketStatus,
+  connectTicketHub,
+  createTicket,
+  getTicket,
+  listCannedReplies,
+  listTickets,
+  replaceTicketTags,
+} from "./api";
+import type {
+  CannedReply,
+  CommentVisibility,
+  TicketDetail,
+  TicketFilters,
+  TicketPriority,
+  TicketStatus,
+  TicketSummary,
+} from "./types";
+
+const statuses: TicketStatus[] = ["New", "Open", "Pending", "OnHold", "Solved", "Closed"];
+const priorities: TicketPriority[] = ["Low", "Normal", "High", "Urgent"];
+
+const emptyFilters: TicketFilters = {
+  query: "",
+  status: "",
+  priority: "",
+  tag: "",
+  breached: false,
+};
+
+function App() {
+  const [filters, setFilters] = useState<TicketFilters>(emptyFilters);
+  const [tickets, setTickets] = useState<TicketSummary[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selected, setSelected] = useState<TicketDetail | null>(null);
+  const [cannedReplies, setCannedReplies] = useState<CannedReply[]>([]);
+  const [commentBody, setCommentBody] = useState("");
+  const [visibility, setVisibility] = useState<CommentVisibility>("Public");
+  const [tagDraft, setTagDraft] = useState("");
+  const [assigneeDraft, setAssigneeDraft] = useState("");
+  const [teamDraft, setTeamDraft] = useState("");
+  const [newTicketOpen, setNewTicketOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const listRequest = useRef(0);
+
+  // The hub connection below is created once and lives for the whole component. A callback that
+  // long-lived must not read `filters` or `selectedId` out of the closure it was created in, or it
+  // would forever see the first render's values. Refs give it a stable box whose contents are
+  // current. Updating them during render is safe: they are not state and cause no re-render.
+  const filtersRef = useRef(filters);
+  filtersRef.current = filters;
+  const selectedIdRef = useRef(selectedId);
+  selectedIdRef.current = selectedId;
+
+  useEffect(() => {
+    void refreshTickets();
+    return () => { listRequest.current += 1; };
+  }, [filters]);
+
+  useEffect(() => {
+    void listCannedReplies().then(setCannedReplies).catch((err: Error) => setError(err.message));
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    let detailRequest = 0;
+    const connection = connectTicketHub(() => {
+      if (!active) return;
+      void refreshTickets();
+      const currentId = selectedIdRef.current;
+      if (currentId) {
+        const request = ++detailRequest;
+        void getTicket(currentId).then((detail) => {
+          if (active && request === detailRequest) setSelected(detail);
+          // Preserve text currently being edited in the separate draft states.
+        }).catch((err: Error) => {
+          if (active && request === detailRequest) setError(err.message);
+        });
+      }
+    }, (message) => { if (active) setError(message); });
+
+    return () => {
+      active = false;
+      void connection.stop();
+    };
+    // Deliberately empty: one connection per mount. Adding `filters` or `selectedId` here would
+    // tear down and re-open the SignalR connection on every keystroke in the search box.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!selected && tickets.length > 0) {
+      void openTicket(tickets[0].id);
+    }
+  }, [tickets, selected]);
+
+  const activeSlaCount = useMemo(
+    () => tickets.filter((ticket) => ticket.firstResponseBreached || ticket.resolutionBreached).length,
+    [tickets],
+  );
+
+  async function refreshTickets() {
+    const request = ++listRequest.current;
+    setLoading(true);
+    setError(null);
+
+    try {
+      // Read through the ref so the copy of this function captured by the long-lived hub
+      // callback still sends the filters the user has now, not the ones it mounted with.
+      const page = await listTickets(filtersRef.current);
+      if (request === listRequest.current) setTickets(page.items);
+    } catch (err) {
+      if (request === listRequest.current) setError((err as Error).message);
+    } finally {
+      if (request === listRequest.current) setLoading(false);
+    }
+  }
+
+  async function openTicket(id: string) {
+    setError(null);
+
+    try {
+      const detail = await getTicket(id);
+      setSelectedId(id);
+      setSelected(detail);
+      setTagDraft(detail.tags.join(", "));
+      setAssigneeDraft(detail.assigneeId ?? "");
+      setTeamDraft(detail.teamId ?? "");
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
+  async function submitComment(event: FormEvent) {
+    event.preventDefault();
+    if (!selected || !commentBody.trim()) return;
+
+    try {
+      const updated = await addComment(selected.id, commentBody, visibility, selected.version);
+      setSelected(updated);
+      setCommentBody("");
+      setTickets((current) => upsertSummary(current, updated));
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
+  async function saveAssignment() {
+    if (!selected) return;
+
+    try {
+      const updated = await assignTicket(selected.id, assigneeDraft, teamDraft, selected.version);
+      setSelected(updated);
+      setTickets((current) => upsertSummary(current, updated));
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
+  async function saveStatus(status: TicketStatus) {
+    if (!selected) return;
+
+    try {
+      const updated = await changeTicketStatus(selected.id, status, selected.version);
+      setSelected(updated);
+      setTickets((current) => upsertSummary(current, updated));
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
+  async function saveTags() {
+    if (!selected) return;
+
+    const tags = tagDraft.split(",").map((tag) => tag.trim()).filter(Boolean);
+
+    try {
+      const updated = await replaceTicketTags(selected.id, tags, selected.version);
+      setSelected(updated);
+      setTickets((current) => upsertSummary(current, updated));
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
+  async function submitNewTicket(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+
+    try {
+      const created = await createTicket({
+        subject: String(form.get("subject")),
+        description: String(form.get("description")),
+        customerName: String(form.get("customerName")),
+        customerEmail: String(form.get("customerEmail")),
+        priority: String(form.get("priority")) as TicketPriority,
+        teamId: String(form.get("teamId")),
+        tags: String(form.get("tags")).split(",").map((tag) => tag.trim()).filter(Boolean),
+      });
+
+      setNewTicketOpen(false);
+      setTickets((current) => upsertSummary(current, created));
+      await openTicket(created.id);
+      event.currentTarget.reset();
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
+  return (
+    <main className="app-shell">
+      <aside className="sidebar">
+        <div className="brand">
+          <div>
+            <strong>SupportDesk</strong>
+            <span>Live customer inbox</span>
+          </div>
+          <button onClick={() => setNewTicketOpen((open) => !open)}>
+            {newTicketOpen ? "Close" : "New"}
+          </button>
+        </div>
+
+        <section className="filters">
+          <input
+            placeholder="Search tickets"
+            value={filters.query}
+            onChange={(event) => setFilters({ ...filters, query: event.target.value })}
+          />
+          <div className="filter-grid">
+            <select
+              value={filters.status}
+              onChange={(event) => setFilters({ ...filters, status: event.target.value as TicketFilters["status"] })}
+            >
+              <option value="">Any status</option>
+              {statuses.map((status) => <option key={status}>{status}</option>)}
+            </select>
+            <select
+              value={filters.priority}
+              onChange={(event) => setFilters({ ...filters, priority: event.target.value as TicketFilters["priority"] })}
+            >
+              <option value="">Any priority</option>
+              {priorities.map((priority) => <option key={priority}>{priority}</option>)}
+            </select>
+          </div>
+          <input
+            placeholder="Tag filter"
+            value={filters.tag}
+            onChange={(event) => setFilters({ ...filters, tag: event.target.value })}
+          />
+          <label className="check-row">
+            <input
+              type="checkbox"
+              checked={filters.breached}
+              onChange={(event) => setFilters({ ...filters, breached: event.target.checked })}
+            />
+            SLA breached
+          </label>
+        </section>
+
+        <div className="queue-meta">
+          <span>{tickets.length} visible</span>
+          <span>{activeSlaCount} SLA risk</span>
+        </div>
+
+        {newTicketOpen && <NewTicketForm onSubmit={submitNewTicket} />}
+
+        <section className="ticket-list" aria-label="Ticket list">
+          {loading && <p className="muted">Loading tickets...</p>}
+          {!loading && tickets.length === 0 && <p className="muted">No tickets match the current filters.</p>}
+          {tickets.map((ticket) => (
+            <button
+              className={`ticket-row ${ticket.id === selectedId ? "selected" : ""}`}
+              key={ticket.id}
+              onClick={() => void openTicket(ticket.id)}
+            >
+              <span className="row-top">
+                <strong>{ticket.number}</strong>
+                <Priority priority={ticket.priority} />
+              </span>
+              <span className="subject">{ticket.subject}</span>
+              <span className="row-bottom">
+                <span>{ticket.customerName}</span>
+                <span>{ticket.status}</span>
+              </span>
+              <span className="tags">{ticket.tags.slice(0, 3).map((tag) => <Tag key={tag} label={tag} />)}</span>
+            </button>
+          ))}
+        </section>
+      </aside>
+
+      <section className="detail-pane">
+        {error && <div className="error-banner">{error}</div>}
+        {!selected && <div className="empty-state">Select a ticket to inspect the conversation and workflow controls.</div>}
+        {selected && (
+          <>
+            <header className="ticket-header">
+              <div>
+                <span className="muted">{selected.number}</span>
+                <h1>{selected.subject}</h1>
+                <p>{selected.description}</p>
+              </div>
+              <div className="header-actions">
+                <select value={selected.status} onChange={(event) => void saveStatus(event.target.value as TicketStatus)}>
+                  {statuses.map((status) => <option key={status}>{status}</option>)}
+                </select>
+                <Priority priority={selected.priority} />
+              </div>
+            </header>
+
+            <section className="workbench">
+              <div className="conversation">
+                {selected.comments.length === 0 && <p className="muted">No comments yet.</p>}
+                {selected.comments.map((comment) => (
+                  <article className={`comment ${comment.visibility === "Internal" ? "internal" : ""}`} key={comment.id}>
+                    <div className="comment-meta">
+                      <strong>{comment.authorName}</strong>
+                      <span>{comment.visibility}</span>
+                      <time>{formatDate(comment.createdAt)}</time>
+                    </div>
+                    <p>{comment.body}</p>
+                  </article>
+                ))}
+
+                <form className="composer" onSubmit={submitComment}>
+                  <textarea
+                    placeholder={visibility === "Internal" ? "Add an internal note" : "Reply to customer"}
+                    value={commentBody}
+                    onChange={(event) => setCommentBody(event.target.value)}
+                  />
+                  <div className="composer-row">
+                    <select onChange={(event) => setCommentBody(event.target.value)} value="">
+                      <option value="">Canned reply</option>
+                      {cannedReplies.map((reply) => (
+                        <option key={reply.id} value={reply.body}>{reply.title}</option>
+                      ))}
+                    </select>
+                    <label className="check-row">
+                      <input
+                        type="checkbox"
+                        checked={visibility === "Internal"}
+                        onChange={(event) => setVisibility(event.target.checked ? "Internal" : "Public")}
+                      />
+                      Internal note
+                    </label>
+                    <button type="submit">Send</button>
+                  </div>
+                </form>
+              </div>
+
+              <aside className="properties">
+                <section>
+                  <h2>Customer</h2>
+                  <p>{selected.customerName}</p>
+                  <span>{selected.customerEmail}</span>
+                </section>
+
+                <section>
+                  <h2>Assignment</h2>
+                  <label>
+                    Agent
+                    <input value={assigneeDraft} onChange={(event) => setAssigneeDraft(event.target.value)} />
+                  </label>
+                  <label>
+                    Team
+                    <input value={teamDraft} onChange={(event) => setTeamDraft(event.target.value)} />
+                  </label>
+                  <button onClick={() => void saveAssignment()}>Save assignment</button>
+                </section>
+
+                <section>
+                  <h2>SLA</h2>
+                  <Sla label="First response" dueAt={selected.firstResponseDueAt} breached={selected.firstResponseBreached} />
+                  <Sla label="Resolution" dueAt={selected.resolutionDueAt} breached={selected.resolutionBreached} />
+                </section>
+
+                <section>
+                  <h2>Tags</h2>
+                  <input value={tagDraft} onChange={(event) => setTagDraft(event.target.value)} />
+                  <button onClick={() => void saveTags()}>Save tags</button>
+                </section>
+
+                <section>
+                  <h2>Concurrency</h2>
+                  <p className="muted">Version {selected.version}. Mutations send this as `expectedVersion`.</p>
+                </section>
+              </aside>
+            </section>
+          </>
+        )}
+      </section>
+    </main>
+  );
+}
+
+function NewTicketForm({ onSubmit }: { onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
+  return (
+    <form className="new-ticket" onSubmit={onSubmit}>
+      <input name="subject" placeholder="Subject" required />
+      <textarea name="description" placeholder="Description" required />
+      <input name="customerName" placeholder="Customer name" required />
+      <input name="customerEmail" placeholder="customer@example.com" type="email" required />
+      <div className="filter-grid">
+        <select name="priority" defaultValue="Normal">
+          {priorities.map((priority) => <option key={priority}>{priority}</option>)}
+        </select>
+        <input name="teamId" placeholder="Team" defaultValue="billing" />
+      </div>
+      <input name="tags" placeholder="Tags, comma separated" />
+      <button type="submit">Create ticket</button>
+    </form>
+  );
+}
+
+function Priority({ priority }: { priority: TicketPriority }) {
+  return <span className={`priority priority-${priority.toLowerCase()}`}>{priority}</span>;
+}
+
+function Tag({ label }: { label: string }) {
+  return <span className="tag">{label}</span>;
+}
+
+function Sla({ label, dueAt, breached }: { label: string; dueAt: string; breached: boolean }) {
+  return (
+    <div className={`sla ${breached ? "breached" : ""}`}>
+      <span>{label}</span>
+      <strong>{formatDate(dueAt)}</strong>
+    </div>
+  );
+}
+
+function upsertSummary<T extends TicketSummary>(tickets: TicketSummary[], incoming: T): TicketSummary[] {
+  const exists = tickets.some((ticket) => ticket.id === incoming.id);
+  const next = exists
+    ? tickets.map((ticket) => (ticket.id === incoming.id ? incoming : ticket))
+    : [incoming, ...tickets];
+
+  return next.sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt));
+}
+
+function formatDate(value: string) {
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
+
+export default App;

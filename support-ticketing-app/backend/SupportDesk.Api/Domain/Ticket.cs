@@ -1,0 +1,253 @@
+namespace SupportDesk.Api.Domain;
+
+public sealed class Ticket
+{
+    private readonly List<TicketComment> _comments;
+    private readonly List<string> _tags;
+
+    private Ticket(
+        Guid id,
+        string number,
+        string subject,
+        string description,
+        string customerName,
+        string customerEmail,
+        TicketStatus status,
+        TicketPriority priority,
+        string? assigneeId,
+        string? teamId,
+        DateTimeOffset createdAt,
+        DateTimeOffset updatedAt,
+        DateTimeOffset firstResponseDueAt,
+        DateTimeOffset resolutionDueAt,
+        DateTimeOffset? firstRespondedAt,
+        DateTimeOffset? closedAt,
+        int version,
+        IEnumerable<string> tags,
+        IEnumerable<TicketComment> comments)
+    {
+        Id = id;
+        Number = number;
+        Subject = subject;
+        Description = description;
+        CustomerName = customerName;
+        CustomerEmail = customerEmail;
+        Status = status;
+        Priority = priority;
+        AssigneeId = assigneeId;
+        TeamId = teamId;
+        CreatedAt = createdAt;
+        UpdatedAt = updatedAt;
+        FirstResponseDueAt = firstResponseDueAt;
+        ResolutionDueAt = resolutionDueAt;
+        FirstRespondedAt = firstRespondedAt;
+        ClosedAt = closedAt;
+        Version = version;
+        _tags = tags.Select(NormalizeTag).Distinct(StringComparer.OrdinalIgnoreCase).Order().ToList();
+        _comments = comments.OrderBy(comment => comment.CreatedAt).ToList();
+    }
+
+    public Guid Id { get; }
+    public string Number { get; }
+    public string Subject { get; private set; }
+    public string Description { get; private set; }
+    public string CustomerName { get; }
+    public string CustomerEmail { get; }
+    public TicketStatus Status { get; private set; }
+    public TicketPriority Priority { get; private set; }
+    public string? AssigneeId { get; private set; }
+    public string? TeamId { get; private set; }
+    public DateTimeOffset CreatedAt { get; }
+    public DateTimeOffset UpdatedAt { get; private set; }
+    public DateTimeOffset FirstResponseDueAt { get; private set; }
+    public DateTimeOffset ResolutionDueAt { get; private set; }
+    public DateTimeOffset? FirstRespondedAt { get; private set; }
+    public DateTimeOffset? ClosedAt { get; private set; }
+    public int Version { get; private set; }
+    public IReadOnlyList<string> Tags => _tags;
+    public IReadOnlyList<TicketComment> Comments => _comments;
+    public bool IsFirstResponseBreached(DateTimeOffset now) => FirstRespondedAt is null && FirstResponseDueAt < now;
+    public bool IsResolutionBreached(DateTimeOffset now) => ClosedAt is null && ResolutionDueAt < now;
+
+    public static Ticket Create(
+        long sequence,
+        string subject,
+        string description,
+        string customerName,
+        string customerEmail,
+        TicketPriority priority,
+        string? teamId,
+        IEnumerable<string> tags,
+        DateTimeOffset now)
+    {
+        if (string.IsNullOrWhiteSpace(subject))
+        {
+            throw new DomainException("Ticket subject is required.");
+        }
+
+        if (string.IsNullOrWhiteSpace(description))
+        {
+            throw new DomainException("Ticket description is required.");
+        }
+
+        if (string.IsNullOrWhiteSpace(customerEmail))
+        {
+            throw new DomainException("Customer email is required.");
+        }
+
+        // Same guard as UpdatePriority. A C# enum is an integer underneath, so a JSON body can
+        // deliver (TicketPriority)99; without this check the SLA switches below fall through to
+        // their `_ =>` arm and the ticket is created with a due date that matches no priority.
+        if (!Enum.IsDefined(priority))
+        {
+            throw new DomainException("Ticket priority is not supported.");
+        }
+
+        var firstResponseDueAt = priority switch
+        {
+            TicketPriority.Urgent => now.AddMinutes(15),
+            TicketPriority.High => now.AddHours(1),
+            TicketPriority.Normal => now.AddHours(4),
+            _ => now.AddBusinessHours(8)
+        };
+
+        var resolutionDueAt = priority switch
+        {
+            TicketPriority.Urgent => now.AddHours(4),
+            TicketPriority.High => now.AddHours(12),
+            TicketPriority.Normal => now.AddDays(2),
+            _ => now.AddDays(5)
+        };
+
+        return new Ticket(
+            Guid.NewGuid(),
+            $"T-{sequence:000000}",
+            subject.Trim(),
+            description.Trim(),
+            customerName.Trim(),
+            customerEmail.Trim().ToLowerInvariant(),
+            TicketStatus.New,
+            priority,
+            assigneeId: null,
+            teamId,
+            createdAt: now,
+            updatedAt: now,
+            firstResponseDueAt,
+            resolutionDueAt,
+            firstRespondedAt: null,
+            closedAt: null,
+            version: 1,
+            tags,
+            comments: []);
+    }
+
+    public Ticket Snapshot() =>
+        new(
+            Id,
+            Number,
+            Subject,
+            Description,
+            CustomerName,
+            CustomerEmail,
+            Status,
+            Priority,
+            AssigneeId,
+            TeamId,
+            CreatedAt,
+            UpdatedAt,
+            FirstResponseDueAt,
+            ResolutionDueAt,
+            FirstRespondedAt,
+            ClosedAt,
+            Version,
+            _tags,
+            _comments);
+
+    public void Assign(string? assigneeId, string? teamId, DateTimeOffset now)
+    {
+        AssigneeId = string.IsNullOrWhiteSpace(assigneeId) ? null : assigneeId.Trim();
+        TeamId = string.IsNullOrWhiteSpace(teamId) ? null : teamId.Trim();
+
+        if (Status == TicketStatus.New)
+        {
+            Status = TicketStatus.Open;
+        }
+
+        Touch(now);
+    }
+
+    public void ChangeStatus(TicketStatus status, DateTimeOffset now)
+    {
+        if (!Enum.IsDefined(status)) throw new DomainException("Ticket status is not supported.");
+        if (Status == TicketStatus.Closed)
+        {
+            throw new DomainException("Closed tickets cannot be reopened in this sample workflow.");
+        }
+
+        Status = status;
+        ClosedAt = status is TicketStatus.Solved or TicketStatus.Closed ? now : null;
+        Touch(now);
+    }
+
+    public TicketComment AddComment(
+        string authorId,
+        string authorName,
+        string body,
+        CommentVisibility visibility,
+        DateTimeOffset now)
+    {
+        if (!Enum.IsDefined(visibility)) throw new DomainException("Comment visibility is not supported.");
+        if (string.IsNullOrWhiteSpace(body))
+        {
+            throw new DomainException("Comment body is required.");
+        }
+
+        var comment = new TicketComment(
+            Guid.NewGuid(),
+            authorId,
+            authorName,
+            body.Trim(),
+            visibility,
+            now);
+
+        _comments.Add(comment);
+
+        if (visibility == CommentVisibility.Public && FirstRespondedAt is null && authorId != CustomerEmail)
+        {
+            FirstRespondedAt = now;
+        }
+
+        if (visibility == CommentVisibility.Public && Status == TicketStatus.New)
+        {
+            Status = TicketStatus.Open;
+        }
+
+        Touch(now);
+        return comment;
+    }
+
+    public void ReplaceTags(IEnumerable<string> tags, DateTimeOffset now)
+    {
+        if (tags is null) throw new DomainException("Tags are required.");
+        var normalized = tags.Select(tag => NormalizeTag(tag ?? string.Empty))
+            .Where(tag => tag.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).Order().ToArray();
+        _tags.Clear();
+        _tags.AddRange(normalized);
+        Touch(now);
+    }
+
+    public void UpdatePriority(TicketPriority priority, DateTimeOffset now)
+    {
+        if (!Enum.IsDefined(priority)) throw new DomainException("Ticket priority is not supported.");
+        Priority = priority;
+        Touch(now);
+    }
+
+    private void Touch(DateTimeOffset now)
+    {
+        UpdatedAt = now;
+        Version++;
+    }
+
+    private static string NormalizeTag(string tag) => tag.Trim().ToLowerInvariant();
+}

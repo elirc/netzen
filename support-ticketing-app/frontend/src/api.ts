@@ -1,0 +1,138 @@
+import {
+  HubConnection,
+  HubConnectionBuilder,
+  LogLevel,
+} from "@microsoft/signalr";
+import type {
+  CannedReply,
+  CommentVisibility,
+  PagedResponse,
+  TicketDetail,
+  TicketFilters,
+  TicketPriority,
+  TicketStatus,
+  TicketSummary,
+} from "./types";
+
+const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:5208";
+
+const demoHeaders = {
+  "X-User-Id": "agent-1",
+  "X-User-Name": "Avery Stone",
+  "X-User-Role": "Agent",
+  "X-Team-Ids": "billing,vip",
+};
+
+async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const response = await fetch(`${API_BASE}${path}`, {
+    ...init,
+    headers: {
+      "Content-Type": "application/json",
+      ...demoHeaders,
+      ...init.headers,
+    },
+  });
+
+  if (!response.ok) {
+    const problem = await response.json().catch(() => null);
+    throw new Error(problem?.detail ?? `${response.status} ${response.statusText}`);
+  }
+
+  return response.json() as Promise<T>;
+}
+
+export async function listTickets(filters: TicketFilters): Promise<PagedResponse<TicketSummary>> {
+  const params = new URLSearchParams({ page: "1", pageSize: "50" });
+  if (filters.query) params.set("query", filters.query);
+  if (filters.status) params.set("status", filters.status);
+  if (filters.priority) params.set("priority", filters.priority);
+  if (filters.tag) params.set("tag", filters.tag);
+  if (filters.breached) params.set("breached", "true");
+
+  return request<PagedResponse<TicketSummary>>(`/api/tickets?${params}`);
+}
+
+export function getTicket(id: string): Promise<TicketDetail> {
+  return request<TicketDetail>(`/api/tickets/${id}`);
+}
+
+export function createTicket(input: {
+  subject: string;
+  description: string;
+  customerName: string;
+  customerEmail: string;
+  priority: TicketPriority;
+  teamId: string;
+  tags: string[];
+}): Promise<TicketDetail> {
+  return request<TicketDetail>("/api/tickets", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function addComment(
+  ticketId: string,
+  body: string,
+  visibility: CommentVisibility,
+  expectedVersion: number,
+): Promise<TicketDetail> {
+  return request<TicketDetail>(`/api/tickets/${ticketId}/comments`, {
+    method: "POST",
+    body: JSON.stringify({ body, visibility, expectedVersion }),
+  });
+}
+
+export function assignTicket(
+  ticketId: string,
+  assigneeId: string,
+  teamId: string,
+  expectedVersion: number,
+): Promise<TicketDetail> {
+  return request<TicketDetail>(`/api/tickets/${ticketId}/assignment`, {
+    method: "PUT",
+    body: JSON.stringify({ assigneeId: assigneeId || null, teamId: teamId || null, expectedVersion }),
+  });
+}
+
+export function changeTicketStatus(
+  ticketId: string,
+  status: TicketStatus,
+  expectedVersion: number,
+): Promise<TicketDetail> {
+  return request<TicketDetail>(`/api/tickets/${ticketId}/status`, {
+    method: "PUT",
+    body: JSON.stringify({ status, expectedVersion }),
+  });
+}
+
+export function replaceTicketTags(
+  ticketId: string,
+  tags: string[],
+  expectedVersion: number,
+): Promise<TicketDetail> {
+  return request<TicketDetail>(`/api/tickets/${ticketId}/tags`, {
+    method: "PUT",
+    body: JSON.stringify({ tags, expectedVersion }),
+  });
+}
+
+export function listCannedReplies(): Promise<CannedReply[]> {
+  return request<CannedReply[]>("/api/canned-replies");
+}
+
+export function connectTicketHub(onChanged: () => void, onError: (message: string) => void): HubConnection {
+  const connection = new HubConnectionBuilder()
+    .withUrl(`${API_BASE}/hubs/tickets`, { headers: demoHeaders })
+    .withAutomaticReconnect()
+    .configureLogging(LogLevel.Information)
+    .build();
+
+  connection.on("tickets.changed", onChanged);
+  connection.onreconnecting(() => onError("Live updates disconnected; retrying."));
+  connection.onreconnected(() => { void connection.invoke("JoinInbox").then(onChanged).catch(() => onError("Live updates could not rejoin; refresh to check for changes.")); });
+  connection.onclose(() => onError("Live updates are unavailable; refresh to check for changes."));
+
+  void connection.start().then(() => connection.invoke("JoinInbox")).catch(() => onError("Live updates are unavailable; refresh to check for changes."));
+  return connection;
+}

@@ -1,0 +1,12 @@
+{
+  "passed": true,
+  "total": 3,
+  "tests": 3,
+  "failed": 0,
+  "checks": [
+    "root-dotnet-test-01",
+    "root-web-types-01",
+    "root-web-build-02"
+  ],
+  "scope": "Actual domain and in-memory search regression cases. API compiled through test project; frontend TypeScript and Vite build passed. .NET8 tests ran with Major roll-forward on .NET10. No live hub, HTTP server or browser tests."
+}
