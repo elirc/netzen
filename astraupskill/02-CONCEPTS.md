@@ -22,14 +22,19 @@ The database can do all of it. The shape to learn is: build one `IQueryable`, ap
 // EF Core version of the same rule. Nothing runs until CountAsync/ToListAsync.
 IQueryable<Ticket> query = db.Tickets.AsNoTracking();
 
-// 1. Authorization is a WHERE clause, not a loop.
-query = user.Role switch
+// 1. Authorization is a WHERE clause, not a loop. This mirrors Permissions.CanReadTicket
+//    (Permissions.cs:7-11) clause for clause: Admin/Manager see everything; anyone else sees
+//    tickets assigned to them, owned by one of their teams, or raised under their email.
+//    (EF's case-insensitive comparison depends on the column collation; CanReadTicket uses
+//    OrdinalIgnoreCase for the email clause.)
+var teamIds = user.TeamIds.ToList();
+if (user.Role is not (SupportRole.Admin or SupportRole.Manager))
 {
-    SupportRole.Customer => query.Where(t => t.CustomerEmail == user.UserId),
-    SupportRole.Agent    => query.Where(t => t.AssigneeId == user.UserId || teamIds.Contains(t.TeamId!)),
-    SupportRole.Admin    => query,
-    _ => query.Where(_ => false),
-};
+    query = query.Where(t =>
+        t.AssigneeId == user.UserId ||
+        (t.TeamId != null && teamIds.Contains(t.TeamId)) ||
+        t.CustomerEmail == user.UserId);
+}
 
 // 2. Then the user's own filters.
 if (!string.IsNullOrWhiteSpace(criteria.Query))
@@ -49,15 +54,19 @@ var items = await query
     .OrderByDescending(t => t.UpdatedAt)
     .Skip((criteria.Page - 1) * criteria.PageSize)
     .Take(criteria.PageSize)
-    .Select(t => new TicketSummaryDto(t.Id, t.Number, t.Subject, t.Status, t.Priority, t.UpdatedAt))
+    // Illustrative slim row. The real TicketSummaryDto (Dto.cs:5-25) has 20 positional
+    // members, including computed breach flags that need `now`; project those explicitly.
+    .Select(t => new { t.Id, t.Number, t.Subject, t.Status, t.Priority, t.UpdatedAt })
     .ToListAsync(cancellationToken);
 ```
+
+An earlier version of this snippet switched on role and gave `Manager` the `_ => false` arm (managers would have seen nothing) and restricted `Customer` to the email clause, which is not what `CanReadTicket` says. When you translate an in-memory policy into a query, diff the two predicates clause by clause; this is exactly the kind of drift a review must catch.
 
 Three things to notice, because each is a bug class the in-memory loop can hide:
 
 1. **`Total` comes from the filtered query.** The original bug was a total counted over a different population than the items. Deriving both from one `IQueryable` makes that impossible to get wrong by accident.
 2. **`Skip`/`Take` come last.** In SQL, `OFFSET`/`FETCH` apply after `WHERE`. If you page first and filter after — which is exactly what the pre-change code did — rows an authorized user should see simply vanish once they fall past the first page boundary.
-3. **The projection is inside the query.** `.Select(...)` before `ToListAsync` means the database returns six columns, not whole ticket graphs with their comments. It is also a second authorization safeguard: a column you never select cannot leak.
+3. **The projection is inside the query.** `.Select(...)` before `ToListAsync` means the database returns only the projected columns, not whole ticket graphs with their comments. It is also a second authorization safeguard: a column you never select cannot leak.
 
 The same reasoning applies to the other persistence concerns this in-memory project fakes:
 

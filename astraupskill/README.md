@@ -6,7 +6,7 @@ The source of truth is the executable project under [`../support-ticketing-app/`
 
 The browser code is [`App.tsx`](../support-ticketing-app/frontend/src/App.tsx) and [`api.ts`](../support-ticketing-app/frontend/src/api.ts). App state keeps server data separate from drafts: `commentBody`, `visibility`, `tagDraft`, `assigneeDraft`, and `teamDraft` survive a list refresh. A list request number suppresses an older filter response. The SignalR connection listens for `tickets.changed`, refetches the list, and refetches the selected detail while retaining those draft values. Reconnect invokes `JoinInbox` before the refresh callback; this restores group membership after reconnect.
 
-Keep the evidence boundaries explicit. The recorded backend check is `root-dotnet-test-01`: three xUnit tests pass with TRX under .NET 8 targeting, using `DOTNET_ROLL_FORWARD=Major` on a .NET 10 runtime. It covers tag enumeration failure, undefined status/priority/visibility, and a 121-ticket customer search where the matching ticket is on a later source page and an internal marker produces no customer result. A later fix pass added a fourth case, `Create_RejectsUndefinedPriority`, which closes the enum guard that was missing from `Ticket.Create`; re-running today reports 4/4 (observed 2026-09-17). `root-web-build-02` passes after React type dependencies were added; the existing `vite-env.d.ts` is retained. There is no live SignalR test, test server, browser automation, database, durable outbox, or real authentication evidence.
+Keep the evidence boundaries explicit. The recorded backend check is `root-dotnet-test-01`: three xUnit tests pass with TRX under .NET 8 targeting, using `DOTNET_ROLL_FORWARD=Major` on a .NET 10 runtime. It covers tag enumeration failure, undefined status/priority/visibility, and a 121-ticket customer search where the matching ticket is on a later source page and an internal marker produces no customer result. A later fix pass added a fourth case, `Create_RejectsUndefinedPriority`, which closes the enum guard that was missing from `Ticket.Create`; the fix-pass re-run reported 4/4 (observed 2026-09-17), and the test file still holds exactly four `[Fact]` methods (counted 2026-10-06). `root-web-build-02` passes after React type dependencies were added; the existing `vite-env.d.ts` is retained. There is no live SignalR test, test server, browser automation, database, durable outbox, or real authentication evidence.
 
 ## Prerequisites and glossary
 
@@ -52,14 +52,14 @@ No database server, no Docker, no Python. There is no frontend test runner in th
 | VERIFICATION | 10 min |
 
 
-The nine reading checkpoints are:
+The eight reading checkpoints are:
 
 1. [`01-CODEBASE-MAP.md`](01-CODEBASE-MAP.md): request, mutation, and notification boundaries.
 2. [`02-CONCEPTS.md`](02-CONCEPTS.md): atomic aggregate edits, permissions, visibility, and pagination.
 3. [`03-WORKED-CHANGE.md`](03-WORKED-CHANGE.md): current C# and TypeScript patterns with actual field names.
 4. [`04-TESTING-AND-DEBUGGING.md`](04-TESTING-AND-DEBUGGING.md): complete backend test fixture and focused debugging evidence.
 5. [`05-PRACTICE.md`](05-PRACTICE.md): repair exercises for search, tags, SignalR, and stale React state.
-6. [`06-SOLUTIONS-AND-REVIEW.md`](06-SOLUTIONS-AND-REVIEW.md): solutions for all nine exercises and review limits.
+6. [`06-SOLUTIONS-AND-REVIEW.md`](06-SOLUTIONS-AND-REVIEW.md): answers for exercises 0-8 (including 5a-5e and the red-first lab), verified review findings, and review limits.
 7. [`07-TRACE-LAB.md`](07-TRACE-LAB.md): concrete traces for customer visibility, concurrency, and reconnect.
 8. [`VERIFICATION.md`](VERIFICATION.md): portable restore, test, build, and documentation checks.
 

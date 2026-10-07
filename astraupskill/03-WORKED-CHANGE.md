@@ -19,7 +19,7 @@ public void ReplaceTags(IEnumerable<string> tags, DateTimeOffset now)
 
 The materialization point is the safety boundary. If an enumerable yields `changed` and then throws, `_tags.Clear()` has not run, so the original tags and version remain intact. Once the array exists, clearing and adding cannot fail because of that input enumeration. `NormalizeTag` trims and lowercases; `Distinct` ignores case; `Order` stabilizes the result. The version advances once only after the replacement succeeds.
 
-The other domain guards are similar. `ChangeStatus` rejects an undefined `TicketStatus` and rejects every change from `Closed`. `UpdatePriority` rejects an undefined `TicketPriority`. `AddComment` rejects an undefined `CommentVisibility` and blank body. `Ticket.Create` currently uses a fallback branch for an undefined priority when calculating due dates, so do not claim creation has an enum guard unless the source changes. The tests cover mutation guards, not a nonexistent creation guard.
+The other domain guards are similar. `ChangeStatus` rejects an undefined `TicketStatus` and rejects every change from `Closed`. `UpdatePriority` rejects an undefined `TicketPriority`. `AddComment` rejects an undefined `CommentVisibility` and blank body. `Ticket.Create` gained the same priority guard in the 2026-09-17 fix pass (`Ticket.cs:101`, see the follow-up below); before that it silently fell through to the SLA switches' fallback arm.
 
 The notifier in [`SignalRTicketNotifier.cs`](../support-ticketing-app/backend/SupportDesk.Api/Realtime/SignalRTicketNotifier.cs) deliberately sends no payload:
 

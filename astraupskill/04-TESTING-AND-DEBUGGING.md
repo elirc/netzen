@@ -45,6 +45,23 @@ public sealed class TicketSafetyTests
     }
 
     [Fact]
+    public void Create_RejectsUndefinedPriority()
+    {
+        var exception = Assert.Throws<DomainException>(() => Ticket.Create(
+            1,
+            "Subject",
+            "Description",
+            "Customer",
+            "customer@example.com",
+            (TicketPriority)99,
+            "team",
+            Array.Empty<string>(),
+            DateTimeOffset.UtcNow));
+
+        Assert.Equal("Ticket priority is not supported.", exception.Message);
+    }
+
+    [Fact]
     public async Task Search_UsesAuthorizedPopulationAcrossSourcePages_AndHidesInternalMarkers()
     {
         var store = new InMemoryTicketStore();
@@ -80,8 +97,8 @@ public sealed class TicketSafetyTests
 }
 ```
 
-The first test proves enumeration failure is atomic at the aggregate boundary. The second proves runtime enum values cannot bypass domain checks. The third seeds one customer-readable ticket followed by 120 tickets owned by other users. The customer still receives ticket `T-000001` because the handler gathers source pages before permission filtering; searching for the internal marker returns zero because the store searches public comments only. The test does not prove complete actor policies, a live hub, a database, or an atomic cross-page snapshot.
+The block above is byte-for-byte the current file (diffed 2026-10-06): four `[Fact]` methods. The first proves enumeration failure is atomic at the aggregate boundary. The second proves runtime enum values cannot bypass the three mutators. The third (added in the 2026-09-17 fix pass) pins the factory's priority guard and its exact message. The fourth seeds one customer-readable ticket followed by 120 tickets owned by other users. Because the store orders by `UpdatedAt` descending (`InMemoryTicketStore.cs:101`) and the other tickets are created `now.AddSeconds(i)`, `T-000001` is row 121 — on source page 2. The customer still receives it because the handler loops over source pages before permission filtering; searching for the internal marker returns zero because the store searches public comments only (`InMemoryTicketStore.cs:67`). The test does not prove complete actor policies, a live hub, a database, or an atomic cross-page snapshot.
 
-Run from `support-ticketing-app/backend` with `dotnet restore SupportDesk.Api.Tests/SupportDesk.Api.Tests.csproj`, then set `$env:DOTNET_ROLL_FORWARD='Major'` if needed and run `dotnet test SupportDesk.Api.Tests/SupportDesk.Api.Tests.csproj -c Release --no-restore`. The recorded `root-dotnet-test-01` result is 3 xUnit tests passing with TRX. From `support-ticketing-app/frontend`, `npm ci` and `npm run build` provide the recorded `root-web-build-02` check. There is no browser or mounted SignalR test in this evidence.
+Run from `support-ticketing-app/backend` with `dotnet restore SupportDesk.Api.Tests/SupportDesk.Api.Tests.csproj`, then set `$env:DOTNET_ROLL_FORWARD='Major'` if needed and run `dotnet test SupportDesk.Api.Tests/SupportDesk.Api.Tests.csproj -c Release --no-restore`. The recorded `root-dotnet-test-01` result (2026-09-12) is 3 xUnit tests passing with TRX — it predates `Create_RejectsUndefinedPriority`; the 2026-09-17 fix-pass run reported 4/4. From `support-ticketing-app/frontend`, `npm ci` and `npm run build` provide the recorded `root-web-build-02` check. There is no browser or mounted SignalR test in this evidence.
 
 **Exercise 4.** Locate the diagnostic assertion in the search test showing that `result.Items[0].Number` is `T-000001`, then explain why checking only `result.Total` would miss a wrong page projection. Name the missing live-system checks.
